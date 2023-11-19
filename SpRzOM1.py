@@ -1,194 +1,156 @@
 import time
-class BigInt:
-    def __init__(self, value=0):
-        self.value = value
-        self.digits = list(str(value))
+def init_hex(num):
+    num = num.lstrip('0x')
+    x = []
+    num = (1024 - len(num)) * '0' + num
+    for i in range(256):
+        x.append(int(num[1020 - 4 * i:1024 - 4 * i], 16))
+    return x
 
-    def __str__(self):
-        return str(self.value)
+def add(a, b):
+    carry = 0
+    c = [0] * 256
+    for i in range(256):
+        temp = a[i] + b[i] + carry
+        c[i] = temp & 65535
+        carry = temp >> 16
+    return c
 
-    @classmethod
-    def from_string(cls, string_value):
-        value = int(string_value)
-        return cls(value)
 
-    @classmethod
-    def from_small(cls, small_value):
-        return cls(small_value)
+def subtract(x, y):
+    borrow = 0
+    c = [0] * 256
+    for i in range(256):
+        temp = x[i] - y[i] - borrow
+        if temp >= 0:
+            c[i] = temp 
+            borrow = 0
+        else:
+            borrow = 1
+            c[i] = temp + 65535
+    return c
 
-    def add(self, other):
-        num1 = self.digits[::-1]
-        num2 = list(str(other.value))[::-1]
-        max_len = max(len(num1), len(num2))
-        result = []
-        carry = 0
-        for i in range(max_len):
-            digit1 = int(num1[i]) if i < len(num1) else 0
-            digit2 = int(num2[i]) if i < len(num2) else 0
-            total = digit1 + digit2 + carry
-            carry = total // 10
-            result.append(total % 10)
+def to_hex(num):
+    result = ""
+    for i in range(255, -1, -1):          
+        hex_string = hex(num[i])[2:]
+        if len(hex_string) == 4:
+            result += hex_string
+        else:
+            hex_string = hex(num[i])[2:]
+            while len(hex_string) != 4:
+                hex_string = '0' + hex_string
+            result += hex_string
+    return result
 
-        if carry:
-            result.append(carry)
+def long_mul_one_digit(a, b):
+    c = [0] * (256)
+    carry = 0
+    for i in range(256):
+        temp = a[i] * b + carry
+        c[i] = temp & 65535
+        carry = temp >> 16
+    c.append(carry)
+    return c
 
-        result = int(''.join(map(str, result[::-1])))
-        return BigInt(result)
+def long_shift_digits_to_high(t, i):
+    k = t
+    for _ in range(i):
+        k.insert(0, 0)  
+        k.pop()  
+    return k
 
-    def subtract(self, other):
-        num1 = self.digits[::-1]
-        num2 = list(str(other.value))[::-1]
-        max_len = max(len(num1), len(num2))
-        result = []
-        borrow = 0
-        for i in range(max_len):
-            digit1 = int(num1[i]) if i < len(num1) else 0
-            digit2 = int(num2[i]) if i < len(num2) else 0
-            diff = digit1 - digit2 - borrow
-            if diff < 0:
-                diff += 10
-                borrow = 1
-            else:
-                borrow = 0
+def long_mul(a, b):
+    c = [0] * 256
+    for i in range(256):
+        temp = long_mul_one_digit(a, b[i])
+        temp = long_shift_digits_to_high(temp, i)
+        c = add(c, temp)
+    return c
 
-            result.append(diff)
+def long_div_mod(a, b):
+    k = bit_length(b)
+    r = a
+    q = [0] * 256
+    m = 0
+    while compare(r, b) >= 0:
+        t = bit_length(r)
+        c = long_shift_bits_to_high(b, t - k)
+        if compare(r, c) < 0:  
+            t = t - 1  
+            c = long_shift_bits_to_high(b, t - k)
+        r = subtract(r, c)[0]
+        m = m - 1  
+        q = add(q, [q_bit])[0]
+    return q, r
 
-        result = int(''.join(map(str, result[::-1])))
-        return BigInt(result)
+def compare(a, b):
+    for i in range(len(a) - 1, -1, -1):
+        if b[i] > b[i]:
+            return 1
+        elif a[i] < b[i]:
+            return -1
+    return 0
 
-    def multiply(self, other):
-        result = BigInt(0)
-        current = BigInt(self.value)
-        while other.value > 0:
-            result = result.add(current)
-            other = other.subtract(BigInt(1))
-        return result
+def bit_length(num):
+    for i in range(255, -1, -1):
+        if num[i] != 0:
+            return i
 
-    def karatsuba_multiply(self, other):
-        if self.value < 10 or other.value < 10:
-            return BigInt(self.value * other.value)
+def square(a):
+    a = long_mul(a, a)
+    return a
 
-        n = max(len(self.digits), len(other.digits))
-        half = n // 2
-        a = BigInt(int(''.join(map(str, self.digits[:-half]))))
-        b = BigInt(int(''.join(map(str, self.digits[-half:]))))
-        c = BigInt(int(''.join(map(str, other.digits[:-half]))))
-        d = BigInt(int(''.join(map(str, other.digits[-half:]))))
-        ac = a.karatsuba_multiply(c)
-        bd = b.karatsuba_multiply(d)
-        ad_bc = (a.add(b)).karatsuba_multiply(c.add(d)).subtract(ac).subtract(bd)
-        result = ac.multiply(BigInt(10**(2*half))).add(ad_bc.multiply(BigInt(10**half))).add(bd)
-        return result
+def hex_to_binary(num):
+    result = ""
+    for i in range(255, -1, -1):
+        temp = bin(num[i])[2:]
+        if len(temp) == 16:
+            result += temp
+        else:
+            temp = bin(num[i])[2:]
+            while len(temp) != 16:
+                temp = '0' + temp
+            result += temp
+    return result
 
-    def square(self):
-        return self.karatsuba_multiply(self)
-      
-    def long_division(self, other):
-        num1_str = "".join(map(str, self.digits))
-        num2_str = "".join(map(str, other.digits))
-        quotient = 0
-        remainder = 0
-        for i in range(len(num1_str)):
-            current_digit = int(num1_str[i])
-            current_value = remainder * 10 + current_digit
-            current_quotient = current_value // int(num2_str)
-            quotient = quotient * 10 + current_quotient
-            remainder = current_value % int(num2_str)
+def long_power(a, b):
+    c = [1] + [0] * 255
+    temp = hex_to_binary(b)[::-1] 
+    for i in range(255, -1, -1):
+        if temp[i] == '1':
+            c = long_mul(c, a)
+        if i != 0:
+            c = square(c)
+    return c
 
-        return BigInt(quotient), BigInt(remainder)
 
-    def power(self, exp):
-        if exp == 0:
-            return BigInt(1)
-        if exp == 1:
-            return self
-
-        result = BigInt(1)
-        base = self
-
-        while exp > 0:
-            if exp % 2 == 1:
-                result = result.karatsuba_multiply(base)
-            base = base.karatsuba_multiply(base)
-            exp = exp // 2
-
-        return result
-
-    def to_hex(self):
-        return hex(self.value)
-
-    def to_binary(self):
-        return bin(self.value)
-
-    @classmethod
-    def from_hex(cls, hex_string):
-        value = int(hex_string, 16)
-        return cls(value)
-
-    @classmethod
-    def from_binary(cls, binary_string):
-        value = int(binary_string, 2)
-        return cls(value)
-
-num1 = BigInt(12347)
-num2 = BigInt(56789)
-base = BigInt(123)
-exp = 3
-print("Введені числа", num1, num2)
-small_number = 0
-big_number = BigInt.from_small(small_number)
-print(f"Велике число: {big_number}")
-add_result = num1.add(num2)
+num1 = '0xcbe75e23d145c3dc78d76739b63d337cc33268e08ce4ea7319c38b7d057b1747d59010759f3b015858dc5a9d05ddbbd3ef41a368ba1ca6d8a6d967f2fed6b7033e7f56d46beae7c259cce870e0879f49849c956b6b6810be90d0c50c54daaef41b2b1c6e3c7b2ed35da549a7c95fd551841ea90e4196e8272b42ea3dba7cdcef'
+num2 = '0xd0a166bef0f8cd687a755ce64c4736e2621fe749af3c4170354c55a2728037612cf3b134550036e2de888e049ee782ab82ab99ba3442a3b4b8eb21c9f79778cff4ce0c2109a02fd18163e5155146d156b92176c03ba2b87ee53ba78217529616eea6e8432b0f736b09e30e89f3ceeaea11fb94dacd994e1fd8a6059cc14a58b2'
+x = init_hex(num1)
+y = init_hex(num2)
+add_result = to_hex(add(x, y)).lstrip('0')
 print(f"Результат додавання: {add_result}")
-sub_result = num1.subtract(num2)
+sub_result = to_hex(subtract(y, x)).lstrip('0')
 print(f"Результат віднімання: {sub_result}")
-result, remainder = num2.long_division(num1)
-print(f"Частка: {result}")
-print(f"Залишок: {remainder}")
+result, remainder = long_div_mod(x, y)
+print("Частка:", to_hex(result).lstrip('0'))
+print("Залишок:", to_hex(remainder).lstrip('0'))
 start_time = time.time()
-mul_result = num1.karatsuba_multiply(num2)
+mul_result = to_hex(long_mul(x, y)).lstrip('0')
 end_time = time.time()
 execution_time = end_time - start_time
 print(f"Результат множення: {mul_result}")
 print(f"Час виконання: {execution_time} секунд")
 start_time = time.time()
-square_result = BigInt.square(num1)
+square_result = to_hex(square(x)).lstrip('0')
 end_time = time.time()
 execution_time = end_time - start_time
 print(f"Результат піднесення до квадрату: {square_result}")
 print(f"Час виконання: {execution_time} секунд")
-hex_add = BigInt.to_hex(add_result)
-binary_sub = BigInt.to_binary(sub_result)
-from_hex_add = BigInt.from_hex(hex_add)
-from_binary_sub = BigInt.from_binary(binary_sub)
-print(f"Результат додавання в шістнадцятковому вигляді: {hex_add}")
-print(f"Результат віднімання в бінарному вигляді: {binary_sub}")
-print(f"Результат додавання в десятковому вигляді: {from_hex_add}")
-print(f"Результат віднімання в десятковому вигляді: {from_binary_sub}")
-print("Основа і степінь до якого підносимо", base, exp)
 start_time = time.time()
-power_result = BigInt.power(base, exp)
+power_result = to_hex(long_power(x, y)).lstrip('0')
 end_time = time.time()
 execution_time = end_time - start_time
 print(f"Результат піднесення до степеня: {power_result}")
 print(f"Час виконання: {execution_time} секунд")
-# Тест 1: Перевірка додавання та множення
-a = BigInt(153)
-b = BigInt(513)
-c = BigInt(315)
-result1 = (a.add(b)).karatsuba_multiply(c)
-result2 = a.karatsuba_multiply(c).add(b.karatsuba_multiply(c))
-print("Test 1")
-print(f"Результат виконання операції: {result1}")
-print(f"Очікуваний результат: {result2}")
-# Тест 2: Перевірка ділення та множення
-a = BigInt(72)
-n = BigInt(20)
-result1 = n.karatsuba_multiply(a)
-result2 = a
-for i in range(1, 20):
-    result2 = result2.add(a)
-
-print("Test 2")
-print(f"Результат виконання операції: {result1}")
-print(f"Очікуваний результат: {result2}")
